@@ -65,12 +65,12 @@ func main() {
 				fmt.Println("unmarshaling phx_reply payload:", err)
 			}
 			fmt.Printf("phx_reply received: topic=%q ref=%q payload=%#v\n", msg.Topic, msg.Ref, payload)
-		case "acquisition_closed":
-			payload := AcquisitionClosedPayload{}
+		case "acquisition_closed", "resale_closed":
+			payload := AddressPayload{}
 			if err = json.Unmarshal(msg.Payload, &payload); err != nil {
-				fmt.Println("unmarshaling acquisition_closed payload:", err)
+				fmt.Printf("unmarshaling %s payload: %s\n", msg.Event, err)
 			}
-			fmt.Printf("acquisition_closed received: topic=%q ref=%q payload=%#v\n", msg.Topic, msg.Ref, payload)
+			fmt.Printf("%s received: topic=%q ref=%q payload=%#v\n", msg.Event, msg.Topic, msg.Ref, payload)
 		default:
 			fmt.Printf("unhandled message received: %#v\n", msg)
 		}
@@ -84,7 +84,7 @@ type PhoenixEvent struct {
 	Ref     string          `json:"ref"`
 }
 
-type AcquisitionClosedPayload struct {
+type AddressPayload struct {
 	Address string
 }
 
