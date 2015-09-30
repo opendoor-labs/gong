@@ -5,8 +5,10 @@ import (
 	"fmt"
 	"log"
 	"sync"
+	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/jpillora/backoff"
 )
 
 type Client struct {
@@ -26,8 +28,10 @@ type Client struct {
 
 func InitClient(url string, topics []string, topicJoinPayload []byte) *Client {
 	return &Client{
-		u:      url,
-		dialer: &websocket.Dialer{},
+		u: url,
+		dialer: &websocket.Dialer{
+			HandshakeTimeout: 10 * time.Second,
+		},
 
 		topics:           topics,
 		topicJoinPayload: topicJoinPayload,
@@ -54,24 +58,31 @@ func (c *Client) Close() {
 }
 
 func (c *Client) connLoop() {
+	b := backoff.Backoff{
+		Min:    100 * time.Millisecond,
+		Max:    10 * time.Second,
+		Factor: 2,
+		Jitter: true,
+	}
 	for {
-		err := c.connOnce(c.u)
+		err := c.connOnce(c.u, b.Reset)
 		if err != nil {
 			log.Printf("conn error: %s", err)
 		}
+		log.Println("disconnected")
 		select {
 		case <-c.donec:
 			close(c.inboundc)
 			close(c.waitc)
 			return
 			// TODO: backoff
-		default:
-			log.Println("disconnected, reconnecting")
+		case <-time.After(b.Duration()):
+			log.Println("reconnecting")
 		}
 	}
 }
 
-func (c *Client) connOnce(url string) error {
+func (c *Client) connOnce(url string, f func()) error {
 	// per docs, this resp.Body doesn't need to be closed
 	conn, _, err := c.dialer.Dial(c.u, nil)
 	if err != nil {
@@ -79,6 +90,9 @@ func (c *Client) connOnce(url string) error {
 	}
 	defer conn.Close()
 	fmt.Printf("connected to %s\n", conn.RemoteAddr())
+	if f != nil {
+		f()
+	}
 
 	for _, topic := range c.topics {
 		joinMsg := Event{
