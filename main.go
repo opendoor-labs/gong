@@ -6,8 +6,11 @@ import (
 	"log"
 	"net/url"
 	"os"
+	"os/signal"
+	"syscall"
 
-	"github.com/gorilla/websocket"
+	"github.com/opendoor-labs/gong/phoenix"
+	"golang.org/x/net/context"
 )
 
 const (
@@ -17,7 +20,10 @@ const (
 func main() {
 	guardianToken := os.Getenv("GUARDIAN_TOKEN")
 
-	dialer := &websocket.Dialer{}
+	ctx, cancel := context.WithCancel(context.Background())
+	sigch := make(chan os.Signal, 2)
+	signal.Notify(sigch, os.Interrupt, syscall.SIGTERM)
+	go handleSignals(sigch, ctx, cancel)
 
 	query := url.Values{}
 	query.Set("vsn", "1.0.0")
@@ -29,70 +35,52 @@ func main() {
 		RawQuery: query.Encode(),
 	}
 
-	// per docs, this resp.Body doesn't need to be closed
-	conn, _, err := dialer.Dial(u.String(), nil)
+	joinPayload, err := json.Marshal(GuardianPayload{GuardianToken: guardianToken})
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer conn.Close()
-	fmt.Printf("connected to %s\n", conn.RemoteAddr())
 
-	// TODO: send ping messages every ~30s
+	client := phoenix.InitClient(u.String(), []string{topicName}, joinPayload)
+	eventch := client.Start()
+	defer client.Close()
 
-	joinMsg := PhoenixEvent{
-		Topic: topicName,
-		Event: "phx_join",
-		Ref:   "1",
-	}
-	joinPayload, err := json.Marshal(PhxJoinPayload{GuardianToken: guardianToken})
-	if err != nil {
-		log.Fatal(err)
-	}
-	joinMsg.Payload = joinPayload
-	if err = conn.WriteJSON(&joinMsg); err != nil {
-		log.Fatalf("joining %s: %s", topicName, err)
-	}
-
-	var msg PhoenixEvent
 	for {
-		if err = conn.ReadJSON(&msg); err != nil {
-			log.Fatal(err)
-		}
-		switch msg.Event {
-		case "phx_reply":
-			payload := PhxReplyPayload{}
-			if err = json.Unmarshal(msg.Payload, &payload); err != nil {
-				fmt.Println("unmarshaling phx_reply payload:", err)
+		select {
+		case evt := <-eventch:
+			switch evt.Event {
+			case "acquisition_closed", "resale_closed":
+				payload := AddressPayload{}
+				if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+					fmt.Printf("unmarshaling %s payload: %s\n", evt.Event, err)
+				}
+				fmt.Printf("%s received: topic=%q ref=%q payload=%#v\n", evt.Event, evt.Topic, evt.Ref, payload)
+			default:
+				fmt.Printf("unhandled message received: %#v\n", evt)
 			}
-			fmt.Printf("phx_reply received: topic=%q ref=%q payload=%#v\n", msg.Topic, msg.Ref, payload)
-		case "acquisition_closed", "resale_closed":
-			payload := AddressPayload{}
-			if err = json.Unmarshal(msg.Payload, &payload); err != nil {
-				fmt.Printf("unmarshaling %s payload: %s\n", msg.Event, err)
-			}
-			fmt.Printf("%s received: topic=%q ref=%q payload=%#v\n", msg.Event, msg.Topic, msg.Ref, payload)
-		default:
-			fmt.Printf("unhandled message received: %#v\n", msg)
+		case <-ctx.Done():
+			return
 		}
 	}
 }
 
-type PhoenixEvent struct {
-	Topic   string          `json:"topic"`
-	Event   string          `json:"event"`
-	Payload json.RawMessage `json:"payload"`
-	Ref     string          `json:"ref"`
+func handleSignals(sigch <-chan os.Signal, ctx context.Context, cancel context.CancelFunc) {
+	select {
+	case <-ctx.Done():
+	case sig := <-sigch:
+		switch sig {
+		case os.Interrupt:
+			log.Println("SIGINT")
+		case syscall.SIGTERM:
+			log.Println("SIGTERM")
+		}
+		cancel()
+	}
 }
 
 type AddressPayload struct {
 	Address string
 }
 
-type PhxJoinPayload struct {
+type GuardianPayload struct {
 	GuardianToken string `json:"guardian_token"`
-}
-
-type PhxReplyPayload struct {
-	Status   string                 `json:"status"`
-	Response map[string]interface{} `json:"response"`
 }
