@@ -19,6 +19,9 @@ const (
 
 func main() {
 	guardianToken := os.Getenv("GUARDIAN_TOKEN")
+	if guardianToken == "" {
+		log.Fatal("GUARDIAN_TOKEN is required")
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	sigch := make(chan os.Signal, 2)
