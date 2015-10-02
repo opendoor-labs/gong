@@ -8,14 +8,20 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/opendoor-labs/gong/phoenix"
-	"github.com/opendoor-labs/gong/pwm"
 	"golang.org/x/net/context"
+
+	"github.com/kidoman/embd"
+	"github.com/kidoman/embd/controller/pca9685"
+	_ "github.com/kidoman/embd/host/rpi" // This loads the RPi driver
 )
 
 const (
 	topicName = "private:closes"
+	servoMin  = 150
+	servoMax  = 600
 )
 
 func main() {
@@ -29,16 +35,23 @@ func main() {
 	signal.Notify(sigch, os.Interrupt, syscall.SIGTERM)
 	go handleSignals(sigch, ctx, cancel)
 
-	if err := pwm.Init(); err != nil {
-		log.Fatal("PWM init: ", err)
+	if err := embd.InitI2C(); err != nil {
+		log.Fatal("I2C init: ", err)
 	}
-	defer pwm.Close()
+	defer embd.CloseI2C()
 
-	device, err := pwm.New(1, 0x40)
-	if err != nil {
-		log.Fatal("PWM new: ", err)
+	bus := embd.NewI2CBus(1)
+
+	dev := pca9685.New(bus, 0x40)
+	dev.Freq = 100
+	defer dev.Close()
+
+	resetAllChannels(dev)
+
+	for i := 0; i < 3; i++ {
+		ringBell(dev, 0)
+		ringBell(dev, 2)
 	}
-	defer device.Close()
 
 	query := url.Values{}
 	query.Set("vsn", "1.0.0")
@@ -98,4 +111,30 @@ type AddressPayload struct {
 
 type GuardianPayload struct {
 	GuardianToken string `json:"guardian_token"`
+}
+
+func resetAllChannels(d *pca9685.PCA9685) error {
+	for i := 0; i < 16; i++ {
+		if err := d.SetPwm(i, 0, servoMin); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func ringBell(d *pca9685.PCA9685, chanID int) {
+	if err := d.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
+	if err := d.SetPwm(chanID, 0, servoMax); err != nil {
+		log.Fatal("setting to max: ", err)
+	}
+	time.Sleep(300 * time.Millisecond)
+	if err := d.SetPwm(chanID, 0, servoMin); err != nil {
+		log.Fatal("setting to min: ", err)
+	}
+	time.Sleep(time.Second)
+	if err := d.Sleep(); err != nil {
+		log.Fatal("waking: ", err)
+	}
 }
