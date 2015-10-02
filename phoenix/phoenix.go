@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strconv"
 	"sync"
 	"time"
 
@@ -24,6 +25,7 @@ type Client struct {
 	closed bool
 	donec  chan struct{}
 	waitc  chan struct{}
+	ref    int
 }
 
 func InitClient(url string, topics []string, topicJoinPayload []byte) *Client {
@@ -99,7 +101,7 @@ func (c *Client) connOnce(url string, f func()) error {
 			Topic:   topic,
 			Event:   "phx_join",
 			Payload: c.topicJoinPayload,
-			Ref:     "1",
+			Ref:     c.makeRef(),
 		}
 		if err = conn.WriteJSON(&joinMsg); err != nil {
 			return err
@@ -144,6 +146,19 @@ func (c *Client) handleEvent(evt *Event) {
 			fmt.Printf("no receiver ready, dropping message: %#v\n", evt)
 		}
 	}
+}
+
+// makeRef returns the next message ref, accounting for overflows
+func (c *Client) makeRef() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	newRef := c.ref + 1
+	if newRef < c.ref {
+		newRef = 0
+	}
+	c.ref = newRef
+	return strconv.Itoa(newRef)
 }
 
 func (c *Client) receiveMsg(conn *websocket.Conn, recvc chan<- eventOrError) {
