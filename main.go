@@ -149,7 +149,7 @@ func ringBell(d *pca9685.PCA9685, chanID int) {
 	if err := d.SetPwm(chanID, 0, servoMin); err != nil {
 		log.Fatal("setting to min: ", err)
 	}
-	time.Sleep(500 * time.Millisecond)
+	time.Sleep(400 * time.Millisecond)
 	if err := d.Sleep(); err != nil {
 		log.Fatal("waking: ", err)
 	}
