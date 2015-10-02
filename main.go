@@ -2,7 +2,6 @@ package main
 
 import (
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/url"
 	"os"
@@ -48,10 +47,7 @@ func main() {
 
 	resetAllChannels(dev)
 
-	for i := 0; i < 3; i++ {
-		ringBell(dev, 0)
-		ringBell(dev, 2)
-	}
+	resetTimer := time.After(time.Second) // long enough for servos to reset
 
 	query := url.Values{}
 	query.Set("vsn", "1.0.0")
@@ -72,18 +68,23 @@ func main() {
 	eventch := client.Start()
 	defer client.Close()
 
+	select {
+	case <-resetTimer: // servos have had enough time to reset
+		if err := dev.Sleep(); err != nil {
+			log.Fatal(err)
+		}
+	case <-ctx.Done():
+		return
+	}
+
 	for {
 		select {
 		case evt := <-eventch:
 			switch evt.Event {
 			case "acquisition_contract", "resale_contract":
-				payload := AddressPayload{}
-				if err := json.Unmarshal(evt.Payload, &payload); err != nil {
-					fmt.Printf("unmarshaling %s payload: %s\n", evt.Event, err)
-				}
-				fmt.Printf("%s received: topic=%q ref=%q payload=%#v\n", evt.Event, evt.Topic, evt.Ref, payload)
+				handleRingEvent(dev, evt)
 			default:
-				fmt.Printf("unhandled message received: %#v\n", evt)
+				log.Printf("unhandled message received: %#v", evt)
 			}
 		case <-ctx.Done():
 			return
@@ -122,6 +123,21 @@ func resetAllChannels(d *pca9685.PCA9685) error {
 	return nil
 }
 
+var bellChannels = map[string]int{
+	"acquisition_contract": 0,
+	"resale_contract":      2,
+}
+
+func handleRingEvent(dev *pca9685.PCA9685, evt *phoenix.Event) {
+	payload := AddressPayload{}
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		log.Printf("unmarshaling %s payload: %s", evt.Event, err)
+		return
+	}
+	log.Printf("%s received: topic=%q ref=%q payload=%#v", evt.Event, evt.Topic, evt.Ref, payload)
+	ringBell(dev, bellChannels[evt.Event])
+}
+
 func ringBell(d *pca9685.PCA9685, chanID int) {
 	if err := d.Wake(); err != nil {
 		log.Fatal("waking: ", err)
@@ -129,11 +145,11 @@ func ringBell(d *pca9685.PCA9685, chanID int) {
 	if err := d.SetPwm(chanID, 0, servoMax); err != nil {
 		log.Fatal("setting to max: ", err)
 	}
-	time.Sleep(300 * time.Millisecond)
+	time.Sleep(280 * time.Millisecond)
 	if err := d.SetPwm(chanID, 0, servoMin); err != nil {
 		log.Fatal("setting to min: ", err)
 	}
-	time.Sleep(time.Second)
+	time.Sleep(500 * time.Millisecond)
 	if err := d.Sleep(); err != nil {
 		log.Fatal("waking: ", err)
 	}
