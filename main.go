@@ -19,7 +19,7 @@ import (
 )
 
 const (
-	topicName = "private:closes"
+	topicName = "private:contracts"
 	servoMin  = 150
 	servoMax  = 600
 )
@@ -76,7 +76,7 @@ func main() {
 		select {
 		case evt := <-eventch:
 			switch evt.Event {
-			case "acquisition_closed", "resale_closed":
+			case "acquisition_contract", "resale_contract":
 				payload := AddressPayload{}
 				if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 					fmt.Printf("unmarshaling %s payload: %s\n", evt.Event, err)
