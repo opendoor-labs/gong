@@ -10,6 +10,7 @@ import (
 	"syscall"
 
 	"github.com/opendoor-labs/gong/phoenix"
+	"github.com/opendoor-labs/gong/pwm"
 	"golang.org/x/net/context"
 )
 
@@ -27,6 +28,17 @@ func main() {
 	sigch := make(chan os.Signal, 2)
 	signal.Notify(sigch, os.Interrupt, syscall.SIGTERM)
 	go handleSignals(sigch, ctx, cancel)
+
+	if err := pwm.Init(); err != nil {
+		log.Fatal("PWM init: ", err)
+	}
+	defer pwm.Close()
+
+	device, err := pwm.New(1, 0x40)
+	if err != nil {
+		log.Fatal("PWM new: ", err)
+	}
+	defer device.Close()
 
 	query := url.Values{}
 	query.Set("vsn", "1.0.0")
