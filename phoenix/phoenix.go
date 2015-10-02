@@ -13,8 +13,11 @@ import (
 )
 
 type Client struct {
-	u      string
-	dialer *websocket.Dialer
+	u                     string
+	dialer                *websocket.Dialer
+	heartbeatInterval     time.Duration
+	heartbeatTimeout      time.Duration
+	heartbeatTimeoutTimer *time.Timer
 
 	topics           []string
 	topicJoinPayload []byte
@@ -34,6 +37,8 @@ func InitClient(url string, topics []string, topicJoinPayload []byte) *Client {
 		dialer: &websocket.Dialer{
 			HandshakeTimeout: 10 * time.Second,
 		},
+		heartbeatInterval: 30 * time.Second,
+		heartbeatTimeout:  time.Minute,
 
 		topics:           topics,
 		topicJoinPayload: topicJoinPayload,
@@ -96,6 +101,12 @@ func (c *Client) connOnce(url string, f func()) error {
 		f()
 	}
 
+	c.heartbeatTimeoutTimer = time.NewTimer(c.heartbeatTimeout)
+	defer c.heartbeatTimeoutTimer.Stop()
+
+	hbTick := time.NewTicker(c.heartbeatInterval)
+	defer hbTick.Stop()
+
 	for _, topic := range c.topics {
 		joinMsg := Event{
 			Topic:   topic,
@@ -111,8 +122,6 @@ func (c *Client) connOnce(url string, f func()) error {
 	recvc := make(chan eventOrError, 1)
 	go c.receiveMsg(conn, recvc)
 
-	// TODO: send ping messages every ~30s
-
 	for {
 		select {
 		case <-c.donec:
@@ -125,25 +134,33 @@ func (c *Client) connOnce(url string, f func()) error {
 
 			c.handleEvent(eventOrErr.event)
 			go c.receiveMsg(conn, recvc)
+		case <-hbTick.C:
+			if err = c.sendHeartbeat(conn); err != nil {
+				return err
+			}
+		case <-c.heartbeatTimeoutTimer.C:
+			return fmt.Errorf("timeout waiting for heartbeat")
 		}
-		// TODO: send ping messages every ~30s
-
 	}
 }
 
 func (c *Client) handleEvent(evt *Event) {
+	if evt.Topic == "phoenix" && evt.Event == "heartbeat" {
+		c.heartbeatTimeoutTimer.Reset(c.heartbeatTimeout)
+		return
+	}
 	switch evt.Event {
 	case "phx_reply":
 		payload := PhxReplyPayload{}
 		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
-			fmt.Println("unmarshaling phx_reply payload:", err)
+			log.Println("unmarshaling phx_reply payload:", err)
 		}
-		fmt.Printf("phx_reply received: topic=%q ref=%q payload=%#v\n", evt.Topic, evt.Ref, payload)
+		log.Printf("phx_reply received: topic=%q ref=%q payload=%#v\n", evt.Topic, evt.Ref, payload)
 	default:
 		select {
 		case c.inboundc <- evt:
 		default:
-			fmt.Printf("no receiver ready, dropping message: %#v\n", evt)
+			log.Printf("no receiver ready, dropping message: %#v\n", evt)
 		}
 	}
 }
@@ -169,6 +186,16 @@ func (c *Client) receiveMsg(conn *websocket.Conn, recvc chan<- eventOrError) {
 		return
 	}
 	recvc <- eventOrError{event: event}
+}
+
+func (c *Client) sendHeartbeat(conn *websocket.Conn) error {
+	hbMsg := Event{
+		Topic:   "phoenix",
+		Event:   "heartbeat",
+		Payload: []byte("{}"),
+		Ref:     c.makeRef(),
+	}
+	return conn.WriteJSON(&hbMsg)
 }
 
 type eventOrError struct {
