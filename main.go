@@ -19,8 +19,8 @@ import (
 
 const (
 	topicName = "private:contracts"
-	servoMin  = 150
-	servoMax  = 600
+	servoMin  = 350
+	servoMax  = 650
 )
 
 func main() {
@@ -46,7 +46,6 @@ func main() {
 	defer dev.Close()
 
 	resetAllChannels(dev)
-
 	resetTimer := time.After(time.Second) // long enough for servos to reset
 
 	query := url.Values{}
@@ -116,7 +115,11 @@ type GuardianPayload struct {
 
 func resetAllChannels(d *pca9685.PCA9685) error {
 	for i := 0; i < 16; i++ {
-		if err := d.SetPwm(i, 0, servoMin); err != nil {
+		setting := servoMin
+		if i == bellChannels["resale_contract"] {
+			setting = chimeMax
+		}
+		if err := d.SetPwm(i, 0, setting); err != nil {
 			return err
 		}
 	}
@@ -124,8 +127,8 @@ func resetAllChannels(d *pca9685.PCA9685) error {
 }
 
 var bellChannels = map[string]int{
-	"acquisition_contract": 0,
-	"resale_contract":      2,
+	"acquisition_contract": 5,
+	"resale_contract":      6,
 }
 
 func handleRingEvent(dev *pca9685.PCA9685, evt *phoenix.Event) {
@@ -135,7 +138,12 @@ func handleRingEvent(dev *pca9685.PCA9685, evt *phoenix.Event) {
 		return
 	}
 	log.Printf("%s received: topic=%q ref=%q payload=%#v", evt.Event, evt.Topic, evt.Ref, payload)
-	ringBell(dev, bellChannels[evt.Event])
+	switch evt.Event {
+	case "acquisition_contract":
+		ringBell(dev, bellChannels[evt.Event])
+	case "resale_contract":
+		ringChime(dev, bellChannels[evt.Event])
+	}
 }
 
 func ringBell(d *pca9685.PCA9685, chanID int) {
@@ -145,12 +153,47 @@ func ringBell(d *pca9685.PCA9685, chanID int) {
 	if err := d.SetPwm(chanID, 0, servoMax); err != nil {
 		log.Fatal("setting to max: ", err)
 	}
-	time.Sleep(280 * time.Millisecond)
+	time.Sleep(450 * time.Millisecond)
+
 	if err := d.SetPwm(chanID, 0, servoMin); err != nil {
 		log.Fatal("setting to min: ", err)
 	}
 	time.Sleep(400 * time.Millisecond)
 	if err := d.Sleep(); err != nil {
+		log.Fatal("sleeping: ", err)
+	}
+}
+
+const (
+	chimeMax = 600
+	chimeMin = 330
+)
+
+func ringChime(d *pca9685.PCA9685, chanID int) {
+	if err := d.Wake(); err != nil {
 		log.Fatal("waking: ", err)
+	}
+	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
+		log.Fatal("setting to min: ", err)
+	}
+	time.Sleep(280 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, (chimeMin+2*chimeMax)/3); err != nil {
+		log.Fatal("setting to middle: ", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
+		log.Fatal("setting to min 2: ", err)
+	}
+	time.Sleep(200 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMax); err != nil {
+		log.Fatal("setting to max: ", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	if err := d.Sleep(); err != nil {
+		log.Fatal("sleeping: ", err)
 	}
 }
