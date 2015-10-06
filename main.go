@@ -10,11 +10,11 @@ import (
 	"time"
 
 	"github.com/opendoor-labs/gong/phoenix"
-	"golang.org/x/net/context"
 
-	"github.com/kidoman/embd"
-	"github.com/kidoman/embd/controller/pca9685"
-	_ "github.com/kidoman/embd/host/rpi" // This loads the RPi driver
+	"github.com/opendoor-labs/gong/Godeps/_workspace/src/github.com/kidoman/embd"
+	"github.com/opendoor-labs/gong/Godeps/_workspace/src/github.com/kidoman/embd/controller/pca9685"
+	_ "github.com/opendoor-labs/gong/Godeps/_workspace/src/github.com/kidoman/embd/host/rpi" // This loads the RPi driver
+	"github.com/opendoor-labs/gong/Godeps/_workspace/src/golang.org/x/net/context"
 )
 
 const (

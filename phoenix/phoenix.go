@@ -8,8 +8,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/gorilla/websocket"
-	"github.com/jpillora/backoff"
+	"github.com/opendoor-labs/gong/Godeps/_workspace/src/github.com/gorilla/websocket"
+	"github.com/opendoor-labs/gong/Godeps/_workspace/src/github.com/jpillora/backoff"
 )
 
 type Client struct {
