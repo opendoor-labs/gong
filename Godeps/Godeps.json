@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/opendoor-labs/gong",
-	"GoVersion": "go1.5.1",
+	"GoVersion": "devel",
 	"Packages": [
 		"./..."
 	],
@@ -19,11 +19,15 @@
 		},
 		{
 			"ImportPath": "github.com/kidoman/embd",
-			"Rev": "5065e49386ae53e601ef7a300934a37cc21fd3b6"
+			"Rev": "0e6096eea7b8034f7db474488ae4171fa6ab165d"
 		},
 		{
 			"ImportPath": "golang.org/x/net/context",
-			"Rev": "4a71d182556e05375344f3da665304f3d5784ab4"
+			"Rev": "62ac18b461605b4be188bbc7300e9aa2bc836cd4"
+		},
+		{
+			"ImportPath": "golang.org/x/net/http2/hpack",
+			"Rev": "62ac18b461605b4be188bbc7300e9aa2bc836cd4"
 		}
 	]
 }
