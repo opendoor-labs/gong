@@ -45,6 +45,10 @@ func main() {
 	dev.Freq = 100
 	defer dev.Close()
 
+	// wake the servo controller so we can reset its channels
+	if err := dev.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
 	resetAllChannels(dev)
 	resetTimer := time.After(time.Second) // long enough for servos to reset
 
