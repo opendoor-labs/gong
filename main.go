@@ -88,6 +88,8 @@ func main() {
 			switch evt.Event {
 			case "acquisition_contract", "resale_contract":
 				handleRingEvent(dev, evt)
+			case "system_test":
+				handleSystemTest(dev, evt)
 			default:
 				log.Printf("unhandled message received: %#v", evt)
 			}
@@ -155,6 +157,35 @@ func handleRingEvent(dev *pca9685.PCA9685, evt *phoenix.Event) {
 		ringBell(dev, bellChannels[evt.Event])
 	case "resale_contract":
 		ringChime(dev, bellChannels[evt.Event])
+	}
+}
+
+func handleSystemTest(dev *pca9685.PCA9685, evt *phoenix.Event) {
+	payload := struct {
+		DeviceID      string `json:"device_id"`
+		SubsystemName string `json:"subsystem_name"`
+	}{}
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		log.Printf("unmarshaling %s payload: %s", evt.Event, err)
+		return
+	}
+
+	if payload.DeviceID == "" || payload.DeviceID != os.Getenv("RESIN_DEVICE_UUID") {
+		log.Printf("system test requested for device_id=%s, skipped with device_id=%d", payload.DeviceID, os.Getenv("RESIN_DEVICE_UUID"))
+		return
+	}
+	switch payload.SubsystemName {
+	case "bell":
+		log.Printf("running system test with bell...")
+		ringBell(dev, bellChannels["acquisition_contract"])
+	case "chime":
+		log.Printf("running system test with chime...")
+		ringChime(dev, bellChannels["resale_contract"])
+	default:
+		log.Printf("running system test with both bell and chime...")
+		ringBell(dev, bellChannels["acquisition_contract"])
+		time.Sleep(time.Second)
+		ringChime(dev, bellChannels["resale_contract"])
 	}
 }
 
