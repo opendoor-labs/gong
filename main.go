@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	topicName = "private:contracts"
-	servoMin  = 350
-	servoMax  = 650
+	topicName   = "private:contracts"
+	servoMin    = 350
+	servoMax    = 650
+	servoMinNew = 600
+	servoMaxNew = 800
 )
 
 func main() {
@@ -121,7 +123,13 @@ func resetAllChannels(d *pca9685.PCA9685) error {
 	for i := 0; i < 16; i++ {
 		setting := servoMin
 		if i == bellChannels["resale_contract"] {
-			setting = chimeMax
+			if isNewHardware() {
+				setting = chimeMaxNew
+			} else {
+				setting = chimeMax
+			}
+		} else if isNewHardware() {
+			setting = servoMinNew
 		}
 		if err := d.SetPwm(i, 0, setting); err != nil {
 			return err
@@ -151,9 +159,15 @@ func handleRingEvent(dev *pca9685.PCA9685, evt *phoenix.Event) {
 }
 
 func ringBell(d *pca9685.PCA9685, chanID int) {
+	if isNewHardware() {
+		ringBellNew(d, chanID)
+		return
+	}
+
 	if err := d.Wake(); err != nil {
 		log.Fatal("waking: ", err)
 	}
+	time.Sleep(100 * time.Millisecond)
 	if err := d.SetPwm(chanID, 0, servoMax); err != nil {
 		log.Fatal("setting to max: ", err)
 	}
@@ -168,19 +182,46 @@ func ringBell(d *pca9685.PCA9685, chanID int) {
 	}
 }
 
-const (
-	chimeMax = 600
-	chimeMin = 330
-)
-
-func ringChime(d *pca9685.PCA9685, chanID int) {
+func ringBellNew(d *pca9685.PCA9685, chanID int) {
 	if err := d.Wake(); err != nil {
 		log.Fatal("waking: ", err)
 	}
+	time.Sleep(100 * time.Millisecond)
+	if err := d.SetPwm(chanID, 0, servoMaxNew); err != nil {
+		log.Fatal("setting to max: ", err)
+	}
+	time.Sleep(450 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, servoMinNew); err != nil {
+		log.Fatal("setting to min: ", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	if err := d.Sleep(); err != nil {
+		log.Fatal("sleeping: ", err)
+	}
+}
+
+const (
+	chimeMax    = 600
+	chimeMin    = 330
+	chimeMaxNew = 250
+	chimeMinNew = 200
+)
+
+func ringChime(d *pca9685.PCA9685, chanID int) {
+	if isNewHardware() {
+		ringChimeNew(d, chanID)
+		return
+	}
+
+	if err := d.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
 	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
 		log.Fatal("setting to min: ", err)
 	}
-	time.Sleep(280 * time.Millisecond)
+	time.Sleep(200 * time.Millisecond)
 
 	if err := d.SetPwm(chanID, 0, (chimeMin+2*chimeMax)/3); err != nil {
 		log.Fatal("setting to middle: ", err)
@@ -200,4 +241,38 @@ func ringChime(d *pca9685.PCA9685, chanID int) {
 	if err := d.Sleep(); err != nil {
 		log.Fatal("sleeping: ", err)
 	}
+}
+
+func ringChimeNew(d *pca9685.PCA9685, chanID int) {
+	if err := d.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := d.SetPwm(chanID, 0, chimeMinNew); err != nil {
+		log.Fatal("setting to min: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMaxNew); err != nil {
+		log.Fatal("setting to middle: ", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMinNew); err != nil {
+		log.Fatal("setting to min 2: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMaxNew); err != nil {
+		log.Fatal("setting to max: ", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	if err := d.Sleep(); err != nil {
+		log.Fatal("sleeping: ", err)
+	}
+}
+
+func isNewHardware() bool {
+	return os.Getenv("NEW_HARDWARE") != ""
 }
