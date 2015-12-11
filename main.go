@@ -235,7 +235,7 @@ func ringBellNew(d *pca9685.PCA9685, chanID int) {
 const (
 	chimeMax    = 600
 	chimeMin    = 330
-	chimeMaxNew = 250
+	chimeMaxNew = 280
 	chimeMinNew = 200
 )
 
@@ -252,7 +252,7 @@ func ringChime(d *pca9685.PCA9685, chanID int) {
 	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
 		log.Fatal("setting to min: ", err)
 	}
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
 
 	if err := d.SetPwm(chanID, 0, (chimeMin+2*chimeMax)/3); err != nil {
 		log.Fatal("setting to middle: ", err)
@@ -262,7 +262,7 @@ func ringChime(d *pca9685.PCA9685, chanID int) {
 	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
 		log.Fatal("setting to min 2: ", err)
 	}
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
 
 	if err := d.SetPwm(chanID, 0, chimeMax); err != nil {
 		log.Fatal("setting to max: ", err)
