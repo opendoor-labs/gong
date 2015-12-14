@@ -18,9 +18,11 @@ import (
 )
 
 const (
-	topicName = "private:contracts"
-	servoMin  = 350
-	servoMax  = 650
+	topicName   = "private:contracts"
+	servoMin    = 350
+	servoMax    = 650
+	servoMinNew = 600
+	servoMaxNew = 800
 )
 
 func main() {
@@ -45,6 +47,10 @@ func main() {
 	dev.Freq = 100
 	defer dev.Close()
 
+	// wake the servo controller so we can reset its channels
+	if err := dev.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
 	resetAllChannels(dev)
 	resetTimer := time.After(time.Second) // long enough for servos to reset
 
@@ -82,6 +88,8 @@ func main() {
 			switch evt.Event {
 			case "acquisition_contract", "resale_contract":
 				handleRingEvent(dev, evt)
+			case "system_test":
+				handleSystemTest(dev, evt)
 			default:
 				log.Printf("unhandled message received: %#v", evt)
 			}
@@ -117,7 +125,13 @@ func resetAllChannels(d *pca9685.PCA9685) error {
 	for i := 0; i < 16; i++ {
 		setting := servoMin
 		if i == bellChannels["resale_contract"] {
-			setting = chimeMax
+			if isNewHardware() {
+				setting = chimeMaxNew
+			} else {
+				setting = chimeMax
+			}
+		} else if isNewHardware() {
+			setting = servoMinNew
 		}
 		if err := d.SetPwm(i, 0, setting); err != nil {
 			return err
@@ -146,10 +160,45 @@ func handleRingEvent(dev *pca9685.PCA9685, evt *phoenix.Event) {
 	}
 }
 
+func handleSystemTest(dev *pca9685.PCA9685, evt *phoenix.Event) {
+	payload := struct {
+		DeviceID      string `json:"device_id"`
+		SubsystemName string `json:"subsystem_name"`
+	}{}
+	if err := json.Unmarshal(evt.Payload, &payload); err != nil {
+		log.Printf("unmarshaling %s payload: %s", evt.Event, err)
+		return
+	}
+
+	if payload.DeviceID == "" || payload.DeviceID != os.Getenv("RESIN_DEVICE_UUID") {
+		log.Printf("system test requested for device_id=%s, skipped with device_id=%d", payload.DeviceID, os.Getenv("RESIN_DEVICE_UUID"))
+		return
+	}
+	switch payload.SubsystemName {
+	case "bell":
+		log.Printf("running system test with bell...")
+		ringBell(dev, bellChannels["acquisition_contract"])
+	case "chime":
+		log.Printf("running system test with chime...")
+		ringChime(dev, bellChannels["resale_contract"])
+	default:
+		log.Printf("running system test with both bell and chime...")
+		ringBell(dev, bellChannels["acquisition_contract"])
+		time.Sleep(time.Second)
+		ringChime(dev, bellChannels["resale_contract"])
+	}
+}
+
 func ringBell(d *pca9685.PCA9685, chanID int) {
+	if isNewHardware() {
+		ringBellNew(d, chanID)
+		return
+	}
+
 	if err := d.Wake(); err != nil {
 		log.Fatal("waking: ", err)
 	}
+	time.Sleep(100 * time.Millisecond)
 	if err := d.SetPwm(chanID, 0, servoMax); err != nil {
 		log.Fatal("setting to max: ", err)
 	}
@@ -164,19 +213,46 @@ func ringBell(d *pca9685.PCA9685, chanID int) {
 	}
 }
 
-const (
-	chimeMax = 600
-	chimeMin = 330
-)
-
-func ringChime(d *pca9685.PCA9685, chanID int) {
+func ringBellNew(d *pca9685.PCA9685, chanID int) {
 	if err := d.Wake(); err != nil {
 		log.Fatal("waking: ", err)
 	}
+	time.Sleep(100 * time.Millisecond)
+	if err := d.SetPwm(chanID, 0, servoMaxNew); err != nil {
+		log.Fatal("setting to max: ", err)
+	}
+	time.Sleep(450 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, servoMinNew); err != nil {
+		log.Fatal("setting to min: ", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+	if err := d.Sleep(); err != nil {
+		log.Fatal("sleeping: ", err)
+	}
+}
+
+const (
+	chimeMax    = 600
+	chimeMin    = 330
+	chimeMaxNew = 280
+	chimeMinNew = 200
+)
+
+func ringChime(d *pca9685.PCA9685, chanID int) {
+	if isNewHardware() {
+		ringChimeNew(d, chanID)
+		return
+	}
+
+	if err := d.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
 	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
 		log.Fatal("setting to min: ", err)
 	}
-	time.Sleep(280 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
 
 	if err := d.SetPwm(chanID, 0, (chimeMin+2*chimeMax)/3); err != nil {
 		log.Fatal("setting to middle: ", err)
@@ -186,7 +262,7 @@ func ringChime(d *pca9685.PCA9685, chanID int) {
 	if err := d.SetPwm(chanID, 0, chimeMin); err != nil {
 		log.Fatal("setting to min 2: ", err)
 	}
-	time.Sleep(200 * time.Millisecond)
+	time.Sleep(120 * time.Millisecond)
 
 	if err := d.SetPwm(chanID, 0, chimeMax); err != nil {
 		log.Fatal("setting to max: ", err)
@@ -196,4 +272,38 @@ func ringChime(d *pca9685.PCA9685, chanID int) {
 	if err := d.Sleep(); err != nil {
 		log.Fatal("sleeping: ", err)
 	}
+}
+
+func ringChimeNew(d *pca9685.PCA9685, chanID int) {
+	if err := d.Wake(); err != nil {
+		log.Fatal("waking: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+	if err := d.SetPwm(chanID, 0, chimeMinNew); err != nil {
+		log.Fatal("setting to min: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMaxNew); err != nil {
+		log.Fatal("setting to middle: ", err)
+	}
+	time.Sleep(500 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMinNew); err != nil {
+		log.Fatal("setting to min 2: ", err)
+	}
+	time.Sleep(100 * time.Millisecond)
+
+	if err := d.SetPwm(chanID, 0, chimeMaxNew); err != nil {
+		log.Fatal("setting to max: ", err)
+	}
+	time.Sleep(400 * time.Millisecond)
+
+	if err := d.Sleep(); err != nil {
+		log.Fatal("sleeping: ", err)
+	}
+}
+
+func isNewHardware() bool {
+	return os.Getenv("NEW_HARDWARE") != ""
 }
