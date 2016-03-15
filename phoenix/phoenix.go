@@ -13,11 +13,11 @@ import (
 )
 
 type Client struct {
-	u                     string
-	dialer                *websocket.Dialer
-	heartbeatInterval     time.Duration
-	heartbeatTimeout      time.Duration
-	heartbeatTimeoutTimer *time.Timer
+	u                      string
+	dialer                 *websocket.Dialer
+	heartbeatInterval      time.Duration
+	inactivityTimeout      time.Duration
+	inactivityTimeoutTimer *time.Timer
 
 	topics           []string
 	topicJoinPayload []byte
@@ -38,7 +38,7 @@ func InitClient(url string, topics []string, topicJoinPayload []byte) *Client {
 			HandshakeTimeout: 10 * time.Second,
 		},
 		heartbeatInterval: 30 * time.Second,
-		heartbeatTimeout:  time.Minute,
+		inactivityTimeout: time.Minute,
 
 		topics:           topics,
 		topicJoinPayload: topicJoinPayload,
@@ -101,8 +101,8 @@ func (c *Client) connOnce(url string, f func()) error {
 		f()
 	}
 
-	c.heartbeatTimeoutTimer = time.NewTimer(c.heartbeatTimeout)
-	defer c.heartbeatTimeoutTimer.Stop()
+	c.inactivityTimeoutTimer = time.NewTimer(c.inactivityTimeout)
+	defer c.inactivityTimeoutTimer.Stop()
 
 	hbTick := time.NewTicker(c.heartbeatInterval)
 	defer hbTick.Stop()
@@ -138,17 +138,15 @@ func (c *Client) connOnce(url string, f func()) error {
 			if err = c.sendHeartbeat(conn); err != nil {
 				return err
 			}
-		case <-c.heartbeatTimeoutTimer.C:
+		case <-c.inactivityTimeoutTimer.C:
 			return fmt.Errorf("timeout waiting for heartbeat")
 		}
 	}
 }
 
 func (c *Client) handleEvent(evt *Event) {
-	if evt.Topic == "phoenix" && evt.Event == "heartbeat" {
-		c.heartbeatTimeoutTimer.Reset(c.heartbeatTimeout)
-		return
-	}
+	// If we've received any kind of event, the channel must be alive.
+	c.inactivityTimeoutTimer.Reset(c.inactivityTimeout)
 	switch evt.Event {
 	case "phx_reply":
 		payload := PhxReplyPayload{}
