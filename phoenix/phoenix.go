@@ -153,7 +153,6 @@ func (c *Client) handleEvent(evt *Event) {
 		if err := json.Unmarshal(evt.Payload, &payload); err != nil {
 			log.Println("unmarshaling phx_reply payload:", err)
 		}
-		log.Printf("phx_reply received: topic=%q ref=%q payload=%#v\n", evt.Topic, evt.Ref, payload)
 	default:
 		select {
 		case c.inboundc <- evt:
