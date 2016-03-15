@@ -1,6 +1,6 @@
 {
 	"ImportPath": "github.com/opendoor-labs/gong",
-	"GoVersion": "devel",
+	"GoVersion": "go1.6",
 	"Packages": [
 		"./..."
 	],
