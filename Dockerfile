@@ -58,4 +58,5 @@ WORKDIR $GOPATH
 COPY go-wrapper /usr/local/bin/
 
 COPY . /go/src/github.com/opendoor-labs/gong
+ENV DEVICE_TYPE=raspberrypi2
 CMD ["bash", "/go/src/github.com/opendoor-labs/gong/start.sh"]

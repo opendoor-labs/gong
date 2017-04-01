@@ -3,6 +3,7 @@
 modprobe i2c-dev
 
 # Start resin-wifi-connect
+export DEVICE_TYPE=raspberrypi2
 export DBUS_SYSTEM_BUS_ADDRESS=unix:path=/host_run/dbus/system_bus_socket
 sleep 1
 node /resin-wifi-connect/src/app.js --clear=false
